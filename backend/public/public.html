@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Admin Dashboard</h1>
+  <nav><a href="index.html">Home</a></nav>
+  <label>
+    Admin Token:
+    <input type="password" id="token">
+  </label>
+  <button id="load-farmers">Load Registrations</button>
+
+  <table id="farmers-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Phone</th>
+        <th>Approved</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const tokenInput = document.getElementById('token');
+    document.getElementById('load-farmers').addEventListener('click', async () => {
+      const token = tokenInput.value;
+      const res = await fetch('/api/farmers', { headers: { 'x-admin-token': token } });
+      if (!res.ok) { alert('Unauthorized or error'); return; }
+      const farmers = await res.json();
+      const tbody = document.querySelector('#farmers-table tbody');
+      tbody.innerHTML = '';
+      farmers.forEach(f => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${f.name}</td>
+          <td>${f.phone}</td>
+          <td>${f.approved}</td>
+          <td>${f.approved ? '' : `<button data-id="${f._id}">Approve</button>`}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    });
+
+    document.querySelector('#farmers-table').addEventListener('click', async e => {
+      if (e.target.tagName === 'BUTTON') {
+        const id = e.target.getAttribute('data-id');
+        const token = tokenInput.value;
+        const res = await fetch('/api/approve', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-token': token
+          },
+          body: JSON.stringify({ id })
+        });
+        if (res.ok) {
+          e.target.parentElement.previousElementSibling.innerText = 'true';
+          e.target.remove();
+        } else {
+          alert('Approval failed');
+        }
+      }
+    });
+  </script>
+</body>
+</html>

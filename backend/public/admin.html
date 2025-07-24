@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <h1>Admin Dashboard</h1>
+  <nav><a href="index.html">Home</a></nav>
+  <div id="login-section">
+    <h2>Admin Login</h2>
+    <label>Phone:<input type="tel" id="login-phone" placeholder="+2348012345678"></label>
+    <label>Password:<input type="password" id="login-password"></label>
+    <button id="login-btn">Login</button>
+    <div id="login-msg"></div>
+  </div>
+  <div id="admin-section" style="display:none;">
+    <button id="load-farmers">Load Registrations</button>
+    <table id="farmers-table">
+      <thead><tr><th>Name</th><th>Phone</th><th>Approved</th><th>Action</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <script>
+    let authHeader = '';
+    document.getElementById('login-btn').addEventListener('click', async () => {
+      const phone = document.getElementById('login-phone').value;
+      const password = document.getElementById('login-password').value;
+      authHeader = 'Basic ' + btoa(phone + ':' + password);
+      const res = await fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, password })
+      });
+      const json = await res.json();
+      if (!res.ok || !json.isAdmin) {
+        document.getElementById('login-msg').innerText = 'Unauthorized.';
+        return;
+      }
+      document.getElementById('login-section').style.display = 'none';
+      document.getElementById('admin-section').style.display = 'block';
+    });
+    document.getElementById('load-farmers').addEventListener('click', async () => {
+      const res = await fetch('/api/farmers', {
+        headers: { 'Authorization': authHeader }
+      });
+      if (!res.ok) { alert('Error loading farmers'); return; }
+      const farmers = await res.json();
+      const tbody = document.querySelector('#farmers-table tbody');
+      tbody.innerHTML = '';
+      farmers.forEach(f => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${f.name}</td>
+          <td>${f.phone}</td>
+          <td>${f.approved}</td>
+          <td>${f.approved ? '' : `<button data-id="${f._id}">Approve</button>`}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    });
+    document.querySelector('#farmers-table').addEventListener('click', async e => {
+      if (e.target.tagName === 'BUTTON') {
+        const id = e.target.getAttribute('data-id');
+        const res = await fetch('/api/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+          body: JSON.stringify({ id })
+        });
+        if (res.ok) {
+          e.target.parentElement.previousElementSibling.innerText = 'true';
+          e.target.remove();
+        } else alert('Approval failed');
+      }
+    });
+  </script>
+</body>
+</html>

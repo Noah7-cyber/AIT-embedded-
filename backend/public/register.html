@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Farmer Registration</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <h1>Register as a Farmer</h1>
+  <nav><a href="index.html">Home</a></nav>
+  <form id="register-form">
+    <label>Name:<input type="text" id="name" required></label>
+    <label>Phone (E.164):<input type="tel" id="phone" required placeholder="+2348012345678"></label>
+    <label>Password:<input type="password" id="password" required></label>
+    <button type="submit">Register</button>
+  </form>
+  <div id="message"></div>
+  <script>
+    document.getElementById('register-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = e.target.name.value;
+      const phone = e.target.phone.value;
+      const password = e.target.password.value;
+      const res = await fetch('/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, phone, password })
+      });
+      const msg = res.ok ? 'Registration successful, pending approval.' : await res.text();
+      document.getElementById('message').innerText = msg;
+      if (res.ok) e.target.reset();
+    });
+  </script>
+</body>
+</html>

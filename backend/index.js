@@ -1,6 +1,7 @@
 // index.js
 require('dotenv').config();
 const express        = require('express');
+const cors           = require('cors');
 const bodyParser     = require('body-parser');
 const mongoose       = require('mongoose');
 const path           = require('path');
@@ -24,7 +25,8 @@ const farmerSchema = new mongoose.Schema({
   name:     { type: String, required: true },
   phone:    { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  approved: { type: Boolean, default: false }
+  approved: { type: Boolean, default: false },
+  isAdmin:  { type: Boolean, default: false }
 });
 const Farmer = mongoose.model('Farmer', farmerSchema);
 
@@ -33,8 +35,9 @@ let lastReading = { moisture: 0, timestamp: null };
 const THRESH   = { moisture: Number(process.env.MOISTURE_THRESH) || 30 };
 
 const app = express();
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(cors());                        // enable CORS for all routes
+app.use(bodyParser.json());             // parse JSON bodies
+app.use(express.static(path.join(__dirname, 'public'))); // serve frontend files
 
 // --- Endpoints ---
 
@@ -45,7 +48,7 @@ app.post('/reading', async (req, res) => {
     console.log(`Received moisture reading: ${moisture}%`);
     lastReading = { moisture, timestamp: new Date() };
 
-    if (moisture < 35) {
+    if (moisture < THRESH.moisture) {
       const farmers = await Farmer.find({ approved: true }).exec();
       const numbers = farmers.map(f => f.phone);
       if (numbers.length) {
@@ -65,7 +68,23 @@ app.get('/status', (req, res) => {
   res.json({ lastReading, threshold: THRESH.moisture });
 });
 
-// 3. POST /register: farmer signup with name, phone, and password
+// 3. POST /login: authenticate user (farmer or admin)
+app.post('/login', async (req, res) => {
+  try {
+    const { phone, password } = req.body;
+    const user = await Farmer.findOne({ phone }).exec();
+    if (!user) return res.status(401).send('Invalid credentials');
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(401).send('Invalid credentials');
+    // return approval and admin status
+    return res.json({ approved: user.approved, isAdmin: user.isAdmin });
+  } catch (e) {
+    console.error('Error in /login:', e);
+    res.status(500).send('Server error');
+  }
+});
+
+// 4. POST /register: farmer signup with name, phone, and password
 app.post('/register', async (req, res) => {
   try {
     const { name, phone, password } = req.body;
@@ -75,28 +94,50 @@ app.post('/register', async (req, res) => {
     res.json({ message: 'Registration successful, pending approval.' });
   } catch (e) {
     console.error('Error in /register:', e);
+    if (e.code === 11000) {
+      return res.status(400).send('Registration failed: phone number already registered.');
+    }
     res.status(400).send('Registration failed.');
   }
 });
 
-// 4. Admin authentication
-const adminToken = process.env.ADMIN_TOKEN;
-function authAdmin(req, res, next) {
-  if (req.headers['x-admin-token'] === adminToken) return next();
-  res.status(401).send('Unauthorized');
+// 5. Admin authentication middleware (Basic Auth)
+async function authAdmin(req, res, next) {
+  try {
+    const auth = req.headers.authorization;
+    if (!auth || !auth.startsWith('Basic ')) {
+      return res.status(401).send('Authorization required');
+    }
+    const [phone, password] = Buffer.from(auth.split(' ')[1], 'base64')
+      .toString()
+      .split(':');
+    const user = await Farmer.findOne({ phone }).exec();
+    if (!user) return res.status(401).send('Unauthorized');
+    const match = await bcrypt.compare(password, user.password);
+    if (!match || !user.isAdmin) return res.status(403).send('Forbidden');
+    next();
+  } catch (e) {
+    console.error('Error in authAdmin:', e);
+    res.status(500).send('Server error');
+  }
 }
 
-// 5. GET /api/farmers: list all farmers (admin only)
+// 6. GET /api/farmers: list all farmers (admin only)
 app.get('/api/farmers', authAdmin, async (req, res) => {
   const farmers = await Farmer.find().select('-password').exec();
   res.json(farmers);
 });
 
-// 6. POST /api/approve: approve a farmer by ID (admin only)
+// 7. POST /api/approve: approve a farmer by ID (admin only)
 app.post('/api/approve', authAdmin, async (req, res) => {
-  const { id } = req.body;
-  await Farmer.findByIdAndUpdate(id, { approved: true }).exec();
-  res.json({ message: 'Farmer approved.' });
+  try {
+    const { id } = req.body;
+    await Farmer.findByIdAndUpdate(id, { approved: true }).exec();
+    res.json({ message: 'Farmer approved.' });
+  } catch (e) {
+    console.error('Error in /api/approve:', e);
+    res.status(500).send('Approval failed');
+  }
 });
 
 // --- Start Server ---

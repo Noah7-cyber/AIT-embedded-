@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>System Status</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <h1>System Status</h1>
+  <nav><a href="index.html">Home</a></nav>
+  <div id="login-section">
+    <h2>Login to View Status</h2>
+    <label>Phone:<input type="tel" id="login-phone" placeholder="+2348012345678"></label>
+    <label>Password:<input type="password" id="login-password"></label>
+    <button id="login-btn">Login</button>
+    <div id="login-msg"></div>
+  </div>
+  <div id="status-section" style="display:none;">
+    <h2>Current Status</h2>
+    <div id="status"></div>
+  </div>
+  <script>
+    document.getElementById('login-btn').addEventListener('click', async () => {
+      const phone = document.getElementById('login-phone').value;
+      const password = document.getElementById('login-password').value;
+      const res = await fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, password })
+      });
+      if (!res.ok) {
+        document.getElementById('login-msg').innerText = 'Invalid credentials or not approved.';
+        return;
+      }
+      const { approved } = await res.json();
+      if (!approved) {
+        document.getElementById('login-msg').innerText = 'Your account is pending approval.';
+        return;
+      }
+      document.getElementById('login-section').style.display = 'none';
+      document.getElementById('status-section').style.display = 'block';
+      const stat = await fetch('/status');
+      const data = await stat.json();
+      document.getElementById('status').innerHTML = `
+        <p>Last Moisture Reading: ${data.lastReading.moisture}%</p>
+        <p>Timestamp: ${new Date(data.lastReading.timestamp).toLocaleString()}</p>
+        <p>Threshold: ${data.threshold}%</p>
+      `;
+    });
+  </script>
+</body>
+</html>
