@@ -12,6 +12,10 @@ const AfricasTalking = require('africastalking')({
 });
 const SMS            = AfricasTalking.SMS;
 
+const OWM_API_KEY   = process.env.OWM_API_KEY;
+const OWM_CITY      = process.env.OWM_CITY || 'Kaduna';
+const OWM_COUNTRY   = process.env.OWM_COUNTRY || 'NG';
+
 // --- MongoDB Setup ---
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
@@ -35,13 +39,13 @@ let lastReading = { moisture: 0, timestamp: null };
 const THRESH   = { moisture: Number(process.env.MOISTURE_THRESH) || 30 };
 
 const app = express();
-app.use(cors());                        // enable CORS for all routes
+app.use(cors());                        // enable CORS
 app.use(bodyParser.json());             // parse JSON bodies
-app.use(express.static(path.join(__dirname, 'public'))); // serve frontend files
+app.use(express.static(path.join(__dirname, 'public'))); // serve frontend
 
 // --- Endpoints ---
 
-// 1. POST /reading: ingest sensor data and alert approved farmers
+// 1. POST /reading: ingest sensor data & send SMS with weather info
 app.post('/reading', async (req, res) => {
   try {
     const { moisture } = req.body;
@@ -49,10 +53,25 @@ app.post('/reading', async (req, res) => {
     lastReading = { moisture, timestamp: new Date() };
 
     if (moisture < THRESH.moisture) {
+      // Fetch weather data
+      let weatherInfo = '';
+      if (OWM_API_KEY) {
+        try {
+          const wres = await fetch(
+            `https://api.openweathermap.org/data/2.5/weather?q=${OWM_CITY},${OWM_COUNTRY}&units=metric&appid=${OWM_API_KEY}`
+          );
+          const mw = await wres.json();
+          weatherInfo = ` Weather: ${mw.weather[0].description}, ${mw.main.temp}°C, humidity ${mw.main.humidity}%`;
+        } catch (err) {
+          console.error('Weather fetch error:', err);
+        }
+      }
+
+      // Notify approved farmers
       const farmers = await Farmer.find({ approved: true }).exec();
       const numbers = farmers.map(f => f.phone);
       if (numbers.length) {
-        const msg = `⚠️ Low soil moisture alert: ${moisture}%`;
+        const msg = `⚠️ Low soil moisture alert: ${moisture}%.` + weatherInfo;
         await SMS.send({ to: numbers, message: msg });
       }
     }
@@ -76,7 +95,6 @@ app.post('/login', async (req, res) => {
     if (!user) return res.status(401).send('Invalid credentials');
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).send('Invalid credentials');
-    // return approval and admin status
     return res.json({ approved: user.approved, isAdmin: user.isAdmin });
   } catch (e) {
     console.error('Error in /login:', e);
@@ -84,7 +102,7 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// 4. POST /register: farmer signup with name, phone, and password
+// 4. POST /register: farmer signup
 app.post('/register', async (req, res) => {
   try {
     const { name, phone, password } = req.body;
@@ -101,16 +119,14 @@ app.post('/register', async (req, res) => {
   }
 });
 
-// 5. Admin authentication middleware (Basic Auth)
+// 5. Admin auth middleware (Basic Auth)
 async function authAdmin(req, res, next) {
   try {
     const auth = req.headers.authorization;
     if (!auth || !auth.startsWith('Basic ')) {
       return res.status(401).send('Authorization required');
     }
-    const [phone, password] = Buffer.from(auth.split(' ')[1], 'base64')
-      .toString()
-      .split(':');
+    const [phone, password] = Buffer.from(auth.split(' ')[1], 'base64').toString().split(':');
     const user = await Farmer.findOne({ phone }).exec();
     if (!user) return res.status(401).send('Unauthorized');
     const match = await bcrypt.compare(password, user.password);
@@ -128,7 +144,7 @@ app.get('/api/farmers', authAdmin, async (req, res) => {
   res.json(farmers);
 });
 
-// 7. POST /api/approve: approve a farmer by ID (admin only)
+// 7. POST /api/approve: approve a farmer (admin only)
 app.post('/api/approve', authAdmin, async (req, res) => {
   try {
     const { id } = req.body;

@@ -3,23 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>System Status</title>
+  <title>System Status & Weather</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-  <h1>System Status</h1>
-  <nav><a href="index.html">Home</a></nav>
+  <h1><i class="fas fa-tachometer-alt"></i> System Status & Weather</h1>
+  <nav><a href="index.html"><i class="fas fa-home"></i> Home</a></nav>
   <div id="login-section">
     <h2>Login to View Status</h2>
     <label>Phone:<input type="tel" id="login-phone" placeholder="+2348012345678"></label>
     <label>Password:<input type="password" id="login-password"></label>
-    <button id="login-btn">Login</button>
+    <button id="login-btn"><i class="fas fa-sign-in-alt"></i> Login</button>
     <div id="login-msg"></div>
   </div>
+
   <div id="status-section" style="display:none;">
-    <h2>Current Status</h2>
+    <h2>Current Soil Data</h2>
     <div id="status"></div>
+    <h2>Current Weather</h2>
+    <div id="weather">Loading weather...</div>
+    <p>
+      Maintaining proper moisture helps improve crop health and conserves water,<br>
+      boosting resilience against climate variability.
+    </p>
   </div>
+
   <script>
     document.getElementById('login-btn').addEventListener('click', async () => {
       const phone = document.getElementById('login-phone').value;
@@ -40,13 +49,33 @@
       }
       document.getElementById('login-section').style.display = 'none';
       document.getElementById('status-section').style.display = 'block';
+
+      // Load soil status
       const stat = await fetch('/status');
       const data = await stat.json();
       document.getElementById('status').innerHTML = `
-        <p>Last Moisture Reading: ${data.lastReading.moisture}%</p>
-        <p>Timestamp: ${new Date(data.lastReading.timestamp).toLocaleString()}</p>
-        <p>Threshold: ${data.threshold}%</p>
+        <p><strong>Last Moisture:</strong> ${data.lastReading.moisture}%</p>
+        <p><strong>Timestamp:</strong> ${new Date(data.lastReading.timestamp).toLocaleString()}</p>
+        <p><strong>Threshold:</strong> ${data.threshold}%</p>
       `;
+      // Load weather
+      const weatherEl = document.getElementById('weather');
+      try {
+        const apiKey = '88c379c639be30f429a606356b5ba301';
+        const city = 'Kaduna';
+        const country = 'NG';
+        const wres = await fetch(
+          `https://api.openweathermap.org/data/2.5/weather?q=${city},${country}&units=metric&appid=${apiKey}`
+        );
+        const mw = await wres.json();
+        weatherEl.innerHTML = `
+          <p><i class=\"fas fa-temperature-high\"></i> ${mw.main.temp}°C</p>
+          <p><i class=\"fas fa-cloud\"></i> ${mw.weather[0].description}</p>
+          <p><i class=\"fas fa-tint\"></i> Humidity: ${mw.main.humidity}%</p>
+        `;
+      } catch (err) {
+        weatherEl.innerText = 'Unable to load weather.';
+      }
     });
   </script>
 </body>

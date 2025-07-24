@@ -5,19 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Dashboard</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-  <h1>Admin Dashboard</h1>
-  <nav><a href="index.html">Home</a></nav>
+  <h1><i class="fas fa-user-shield"></i> Admin Dashboard</h1>
+  <nav><a href="index.html"><i class="fas fa-home"></i> Home</a></nav>
   <div id="login-section">
     <h2>Admin Login</h2>
     <label>Phone:<input type="tel" id="login-phone" placeholder="+2348012345678"></label>
     <label>Password:<input type="password" id="login-password"></label>
-    <button id="login-btn">Login</button>
+    <button id="login-btn"><i class="fas fa-sign-in-alt"></i> Login</button>
     <div id="login-msg"></div>
   </div>
   <div id="admin-section" style="display:none;">
-    <button id="load-farmers">Load Registrations</button>
+    <button id="load-farmers"><i class="fas fa-users"></i> Load Registrations</button>
     <table id="farmers-table">
       <thead><tr><th>Name</th><th>Phone</th><th>Approved</th><th>Action</th></tr></thead>
       <tbody></tbody>

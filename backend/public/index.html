@@ -5,14 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agri SMS Monitor</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-  <h1>Welcome to Agri SMS Monitor</h1>
+  <header>
+    <h1 class="animate-text"><i class="fas fa-seedling"></i> Agri SMS Monitor</h1>
+    <p class="subtext">
+      <span class="typed"></span>
+    </p>
+  </header>
   <nav>
-    <a href="register.html">Farmer Registration</a>
-    <a href="status.html">View Status</a>
-    <a href="admin.html">Admin Dashboard</a>
+    <a href="register.html"><i class="fas fa-user-plus"></i> Farmer Registration</a>
+    <a href="status.html"><i class="fas fa-tachometer-alt"></i> View Status</a>
+    <a href="admin.html"><i class="fas fa-user-shield"></i> Admin Dashboard</a>
   </nav>
-  <p>This system alerts farmers via SMS when soil moisture falls below the set threshold.</p>
+  <section class="hero">
+    <p>
+      Welcome to the future of smart agriculture.<br>
+      Receive real-time alerts, monitor your field’s moisture, and conserve water with ease.
+    </p>
+  </section>
+  <script src="https://cdn.jsdelivr.net/npm/typed.js@2.0.12"></script>
+  <script>
+    // Typed.js animation for subtext
+    new Typed('.typed', {
+      strings: [
+        'Optimize soil moisture for higher yields.',
+        'Reduce water waste with real-time alerts.',
+        'Empower communities through data-driven farming.'
+      ],
+      typeSpeed: 50,
+      backSpeed: 25,
+      loop: true
+    });
+  </script>
 </body>
 </html>
