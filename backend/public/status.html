@@ -10,6 +10,7 @@
 <body>
   <h1><i class="fas fa-tachometer-alt"></i> System Status & Weather</h1>
   <nav><a href="index.html"><i class="fas fa-home"></i> Home</a></nav>
+
   <div id="login-section">
     <h2>Login to View Status</h2>
     <label>Phone:<input type="tel" id="login-phone" placeholder="+2348012345678"></label>
@@ -21,8 +22,10 @@
   <div id="status-section" style="display:none;">
     <h2>Current Soil Data</h2>
     <div id="status"></div>
+
     <h2>Current Weather</h2>
     <div id="weather">Loading weather...</div>
+
     <p>
       Maintaining proper moisture helps improve crop health and conserves water,<br>
       boosting resilience against climate variability.
@@ -58,20 +61,21 @@
         <p><strong>Timestamp:</strong> ${new Date(data.lastReading.timestamp).toLocaleString()}</p>
         <p><strong>Threshold:</strong> ${data.threshold}%</p>
       `;
-      // Load weather
+
+      // Load weather (client-side)
       const weatherEl = document.getElementById('weather');
       try {
         const apiKey = '88c379c639be30f429a606356b5ba301';
-        const city = 'Kaduna';
-        const country = 'NG';
-        const wres = await fetch(
+        const city   = 'Kaduna';
+        const country= 'Nigeria';
+        const wres   = await fetch(
           `https://api.openweathermap.org/data/2.5/weather?q=${city},${country}&units=metric&appid=${apiKey}`
         );
         const mw = await wres.json();
         weatherEl.innerHTML = `
-          <p><i class=\"fas fa-temperature-high\"></i> ${mw.main.temp}°C</p>
-          <p><i class=\"fas fa-cloud\"></i> ${mw.weather[0].description}</p>
-          <p><i class=\"fas fa-tint\"></i> Humidity: ${mw.main.humidity}%</p>
+          <p><i class="fas fa-temperature-high"></i> ${mw.main.temp}°C</p>
+          <p><i class="fas fa-cloud"></i> ${mw.weather[0].description}</p>
+          <p><i class="fas fa-tint"></i> Humidity: ${mw.main.humidity}%</p>
         `;
       } catch (err) {
         weatherEl.innerText = 'Unable to load weather.';

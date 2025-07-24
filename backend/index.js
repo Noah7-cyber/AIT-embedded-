@@ -36,16 +36,47 @@ const Farmer = mongoose.model('Farmer', farmerSchema);
 
 // --- In-memory State ---
 let lastReading = { moisture: 0, timestamp: null };
-const THRESH   = { moisture: Number(process.env.MOISTURE_THRESH) || 30 };
+const THRESH   = { moisture: Number(process.env.MOISTURE_THRESH) || 40 };
 
 const app = express();
-app.use(cors());                        // enable CORS
-app.use(bodyParser.json());             // parse JSON bodies
-app.use(express.static(path.join(__dirname, 'public'))); // serve frontend
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
 // --- Endpoints ---
 
 // 1. POST /reading: ingest sensor data & send SMS with weather info
+// app.post('/reading', async (req, res) => {
+//   try {
+//     const { moisture } = req.body;
+//     console.log(`Received moisture reading: ${moisture}%`);
+//     lastReading = { moisture, timestamp: new Date() };
+
+//     if (moisture < THRESH.moisture) {
+//       // Fetch weather data
+//       let weatherInfo = '';
+//       if (OWM_API_KEY) {
+//         try {
+//           const wres = await fetch(
+//             `https://api.openweathermap.org/data/2.5/weather?q=${OWM_CITY},${OWM_COUNTRY}&units=metric&appid=${OWM_API_KEY}`
+//           );
+//           const mw = await wres.json();
+//           weatherInfo = ` Weather: ${mw.weather[0].description}, ${mw.main.temp}°C, humidity ${mw.main.humidity}%`;
+//         } catch (err) {
+//           console.error('Weather fetch error:', err);
+//         }
+//       }
+
+//       // Notify approved farmers
+//       const farmers = await Farmer.find({ approved: true }).exec();
+//       const numbers = farmers.map(f => f.phone);
+//       if (numbers.length) {
+//         const msg = `⚠️ Low soil moisture alert: ${moisture}%.` + weatherInfo;
+//         console.log('Sending SMS to:', numbers, 'msg:', msg);
+//         await SMS.send({ to: numbers, message: msg });
+//       }
+//     }
+// 1. POST /reading: ingest sensor data & send SMS with weather + one response only
 app.post('/reading', async (req, res) => {
   try {
     const { moisture } = req.body;
@@ -53,7 +84,7 @@ app.post('/reading', async (req, res) => {
     lastReading = { moisture, timestamp: new Date() };
 
     if (moisture < THRESH.moisture) {
-      // Fetch weather data
+      // 1a. fetch weather
       let weatherInfo = '';
       if (OWM_API_KEY) {
         try {
@@ -67,20 +98,36 @@ app.post('/reading', async (req, res) => {
         }
       }
 
-      // Notify approved farmers
+      // 1b. pull approved farmers
       const farmers = await Farmer.find({ approved: true }).exec();
       const numbers = farmers.map(f => f.phone);
+      console.log('About to send SMS to:', numbers);
+
       if (numbers.length) {
         const msg = `⚠️ Low soil moisture alert: ${moisture}%.` + weatherInfo;
-        await SMS.send({ to: numbers, message: msg });
+        try {
+          const atResponse = await SMS.send({ to: numbers, message: msg });
+          console.log('Africa’s Talking response:', JSON.stringify(atResponse, null, 2));
+        } catch (smsErr) {
+          console.error('Error sending SMS via AT:', smsErr);
+        }
+      } else {
+        console.log('No approved farmers to notify.');
       }
+    } else {
+      console.log('Moisture is above threshold; no SMS.');
     }
-    res.sendStatus(200);
+
+    // 2. Only send one response back to the client
+    return res.json({ ok: true, lastReading });
   } catch (e) {
     console.error('Error in /reading:', e);
-    res.status(500).send(e.toString());
+    return res.status(500).json({ ok: false, error: e.toString() });
   }
 });
+
+
+   
 
 // 2. GET /status: current system status
 app.get('/status', (req, res) => {
@@ -98,7 +145,7 @@ app.post('/login', async (req, res) => {
     return res.json({ approved: user.approved, isAdmin: user.isAdmin });
   } catch (e) {
     console.error('Error in /login:', e);
-    res.status(500).send('Server error');
+    return res.status(500).send('Server error');
   }
 });
 
@@ -109,13 +156,13 @@ app.post('/register', async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
     const farmer = new Farmer({ name, phone, password: hashed });
     await farmer.save();
-    res.json({ message: 'Registration successful, pending approval.' });
+    return res.json({ message: 'Registration successful, pending approval.' });
   } catch (e) {
     console.error('Error in /register:', e);
     if (e.code === 11000) {
       return res.status(400).send('Registration failed: phone number already registered.');
     }
-    res.status(400).send('Registration failed.');
+    return res.status(400).send('Registration failed.');
   }
 });
 
@@ -134,7 +181,7 @@ async function authAdmin(req, res, next) {
     next();
   } catch (e) {
     console.error('Error in authAdmin:', e);
-    res.status(500).send('Server error');
+    return res.status(500).send('Server error');
   }
 }
 
@@ -149,10 +196,10 @@ app.post('/api/approve', authAdmin, async (req, res) => {
   try {
     const { id } = req.body;
     await Farmer.findByIdAndUpdate(id, { approved: true }).exec();
-    res.json({ message: 'Farmer approved.' });
+    return res.json({ message: 'Farmer approved.' });
   } catch (e) {
     console.error('Error in /api/approve:', e);
-    res.status(500).send('Approval failed');
+    return res.status(500).send('Approval failed');
   }
 });
 
