@@ -39,12 +39,49 @@
   </main>
 
   <script>
-    // Functionality is unchanged
     let authHeader = '';
+    let adminPoll  = null;
 
     function showAdmin() {
-      document.getElementById('login-section').style.display = 'none';
+      document.getElementById('login-section').style.display  = 'none';
       document.getElementById('admin-section').style.display = 'block';
+    }
+
+    async function loadFarmers() {
+      const res = await fetch('/api/farmers', {
+        headers: { 'Authorization': authHeader }
+      });
+      if (res.status === 401 || res.status === 403) {
+        // Session expired or not allowed → reset
+        clearInterval(adminPoll);
+        adminPoll = null;
+        localStorage.removeItem('token');
+        document.getElementById('admin-section').style.display = 'none';
+        document.getElementById('login-section').style.display = 'block';
+        document.getElementById('login-msg').innerText =
+          'Session expired or unauthorized. Please log in again.';
+        return;
+      }
+      if (!res.ok) {
+        alert('Error loading farmers');
+        return;
+      }
+      const farmers = await res.json();
+      const tbody = document.querySelector('#farmers-table tbody');
+      tbody.innerHTML = '';
+      farmers.forEach(f => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${f.name}</td>
+          <td>${f.phone}</td>
+          <td>${f.approved}</td>
+          <td>${f.approved
+            ? ''
+            : `<button data-id="${f._id}" style="width:auto; padding:5px 10px; font-size:0.9rem;">Approve</button>`}
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -52,15 +89,17 @@
       if (token) {
         authHeader = 'Bearer ' + token;
         showAdmin();
+        loadFarmers();
+        adminPoll = setInterval(loadFarmers, 30000);
       }
     });
 
     document.getElementById('login-btn').addEventListener('click', async () => {
-      const phone = document.getElementById('login-phone').value;
+      const phone    = document.getElementById('login-phone').value;
       const password = document.getElementById('login-password').value;
       const res = await fetch('/login', {
         method: 'POST',
-        headers: { 'Content-Type':'application/json' },
+        headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ phone, password })
       });
       const json = await res.json();
@@ -71,33 +110,17 @@
       localStorage.setItem('token', json.token);
       authHeader = 'Bearer ' + json.token;
       showAdmin();
-    });
-
-    document.getElementById('load-farmers').addEventListener('click', async () => {
-      const res = await fetch('/api/farmers', {
-        headers: { 'Authorization': authHeader }
-      });
-      if (!res.ok) { alert('Error loading farmers'); return; }
-      const farmers = await res.json();
-      const tbody = document.querySelector('#farmers-table tbody');
-      tbody.innerHTML = '';
-      farmers.forEach(f => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${f.name}</td>
-          <td>${f.phone}</td>
-          <td>${f.approved}</td>
-          <td>${f.approved ? '' : `<button data-id="${f._id}" style="width:auto; padding: 5px 10px; font-size: 0.9rem;">Approve</button>`}</td>
-        `;
-        tbody.appendChild(tr);
-      });
+      loadFarmers();
+      if (!adminPoll) {
+        adminPoll = setInterval(loadFarmers, 30000);
+      }
     });
 
     document.querySelector('#farmers-table').addEventListener('click', async e => {
       if (e.target.tagName === 'BUTTON') {
         const id = e.target.dataset.id;
         const res = await fetch('/api/approve', {
-          method:'POST',
+          method: 'POST',
           headers: {
             'Content-Type':'application/json',
             'Authorization': authHeader
@@ -105,9 +128,12 @@
           body: JSON.stringify({ id })
         });
         if (res.ok) {
-          e.target.closest('tr').querySelector('td:nth-child(3)').innerText = 'true';
+          const row = e.target.closest('tr');
+          row.querySelector('td:nth-child(3)').innerText = 'true';
           e.target.remove();
-        } else alert('Approval failed');
+        } else {
+          alert('Approval failed');
+        }
       }
     });
   </script>
