@@ -1,39 +1,47 @@
 // index.js
 require('dotenv').config();
-const express        = require('express');
-const cors           = require('cors');
-const bodyParser     = require('body-parser');
-const mongoose       = require('mongoose');
-const path           = require('path');
-const bcrypt         = require('bcryptjs');
-const jwt            = require('jsonwebtoken');
+const express    = require('express');
+const cors       = require('cors');
+const bodyParser = require('body-parser');
+const mongoose   = require('mongoose');
+const path       = require('path');
+const bcrypt     = require('bcryptjs');
+const jwt        = require('jsonwebtoken');
 
-// fetch import compatible with node-fetch v2/v3
+// dynamic import for node-fetch v3
 const fetch = (...args) =>
   import('node-fetch').then(({ default: fetch }) => fetch(...args));
-// —— your production SMS client ——
+
+// production SMS client (uses AT_USERNAME from your .env)
 const AfricasTalking = require('africastalking')({
   username: process.env.AT_USERNAME,
   apiKey:   process.env.AT_API_KEY
 });
-const SMS            = AfricasTalking.SMS;
+const SMS = AfricasTalking.SMS;
 
-// —— a second sandboxed AT client for USSD only ——
+// sandbox USSD client
 const AT_SANDBOX = require('africastalking')({
   username: 'sandbox',
   apiKey:   process.env.AT_API_KEY
 });
-const USSD      = AT_SANDBOX.USSD;
+const USSD = AT_SANDBOX.USSD;
 
-const OWM_API_KEY = process.env.OWM_API_KEY;
-const OWM_CITY    = process.env.OWM_CITY    || 'Kaduna';
-const OWM_COUNTRY = process.env.OWM_COUNTRY || 'NG';
-const THRESH      = { moisture: Number(process.env.MOISTURE_THRESH) || 40 };
-const JWT_SECRET  = process.env.JWT_SECRET || 'supersecret_jwt_key';
+const {
+  OWM_API_KEY,
+  OWM_CITY    = 'Kaduna',
+  OWM_COUNTRY = 'NG',
+  MOISTURE_THRESH,
+  JWT_SECRET  = 'supersecret_jwt_key',
+  MONGODB_URI
+} = process.env;
 
-mongoose
-  .connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .catch(err => console.error('MongoDB conn error:', err));
+const THRESH = { moisture: Number(MOISTURE_THRESH) || 40 };
+
+// ── MONGODB SETUP ──────────────────────────────────────────────────────────────
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).catch(err => console.error('MongoDB error:', err));
 
 const farmerSchema = new mongoose.Schema({
   name:     { type: String, required: true },
@@ -46,17 +54,14 @@ const Farmer = mongoose.model('Farmer', farmerSchema);
 
 let lastReading = { moisture: 0, timestamp: null };
 
+// ── EXPRESS SETUP ──────────────────────────────────────────────────────────────
 const app = express();
-
-// parse JSON bodies
 app.use(cors());
 app.use(bodyParser.json());
-// parse urlencoded bodies (needed for USSD callbacks)
 app.use(bodyParser.urlencoded({ extended: false }));
-// serve your front-end
 app.use(express.static(path.join(__dirname, 'public')));
 
-// — auth helpers —
+// ── AUTH HELPERS ───────────────────────────────────────────────────────────────
 function authenticate(req, res, next) {
   const h = req.headers.authorization;
   if (!h || !h.startsWith('Bearer ')) {
@@ -74,47 +79,53 @@ function authorizeAdmin(req, res, next) {
   next();
 }
 
-// 1) inbound sensor → store & (if low) send SMS
-app.post('/reading', async (req, res) => {
-  try {
-    const { moisture } = req.body;
-    console.log(`Received moisture: ${moisture}%`);
-    lastReading = { moisture, timestamp: new Date() };
+// ── 1) PUBLIC READING ENDPOINT ─────────────────────────────────────────────────
+app.post('/reading', (req, res) => {
+  const { moisture } = req.body;
+  console.log(`Received moisture: ${moisture}%`);
+  lastReading = { moisture, timestamp: new Date() };
 
-    if (moisture < THRESH.moisture) {
-      // fetch weather
+  // immediately respond to caller
+  res.json({ ok: true, lastReading });
+
+  // if below threshold, fire‐and‐forget SMS
+  if (moisture < THRESH.moisture) {
+    (async () => {
+      // 1a) fetch weather
       let weatherInfo = '';
       if (OWM_API_KEY) {
         try {
           const wres = await fetch(
-            `https://api.openweathermap.org/data/2.5/weather?q=${OWM_CITY},${OWM_COUNTRY}&units=metric&appid=${OWM_API_KEY}`
+            `https://api.openweathermap.org/data/2.5/weather` +
+            `?q=${OWM_CITY},${OWM_COUNTRY}&units=metric&appid=${OWM_API_KEY}`
           );
           const mw = await wres.json();
-          weatherInfo = ` Weather: ${mw.weather[0].description}, ${mw.main.temp}°C, humidity ${mw.main.humidity}%`;
+          weatherInfo = ` Weather: ${mw.weather[0].description}, ` +
+                        `${mw.main.temp}°C, humidity ${mw.main.humidity}%`;
         } catch (e) {
           console.error('Weather fetch error:', e);
         }
       }
 
-      // notify all approved farmers
-      const farmers = await Farmer.find({ approved: true });
-      const numbers = farmers.map(f => f.phone);
-      if (numbers.length) {
+      // 1b) send SMS to approved farmers
+      try {
+        const farmers = await Farmer.find({ approved: true });
+        const numbers = farmers.map(f => f.phone);
+        if (!numbers.length) {
+          console.log('No approved farmers to notify.');
+          return;
+        }
         const msg = `⚠️ Low soil moisture alert: ${moisture}%.` + weatherInfo;
-        await SMS.send({ to: numbers, message: msg });
-        console.log('SMS sent to', numbers);
+        const atResp = await SMS.send({ to: numbers, message: msg });
+        console.log('SMS sent:', JSON.stringify(atResp, null, 2));
+      } catch (smsErr) {
+        console.error('SMS send error (ignored):', smsErr);
       }
-    }
-
-    // single JSON reply
-    res.json({ ok: true, lastReading });
-  } catch (e) {
-    console.error('Error in /reading:', e);
-    res.status(500).json({ ok: false, error: e.toString() });
+    })();
   }
 });
 
-// 2) protected JSON status endpoint
+// ── 2) PROTECTED STATUS ENDPOINT ───────────────────────────────────────────────
 app.get('/status', authenticate, (req, res) => {
   if (!req.user.approved) {
     return res.status(403).send('Account not approved');
@@ -122,7 +133,7 @@ app.get('/status', authenticate, (req, res) => {
   res.json({ lastReading, threshold: THRESH.moisture });
 });
 
-// 3) login → JWT
+// ── 3) LOGIN → ISSUE JWT ───────────────────────────────────────────────────────
 app.post('/login', async (req, res) => {
   try {
     const { phone, password } = req.body;
@@ -144,7 +155,7 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// 4) registration
+// ── 4) REGISTER ────────────────────────────────────────────────────────────────
 app.post('/register', async (req, res) => {
   try {
     const { name, phone, password } = req.body;
@@ -160,7 +171,7 @@ app.post('/register', async (req, res) => {
   }
 });
 
-// 5) admin only
+// ── 5) ADMIN ROUTES ───────────────────────────────────────────────────────────
 app.get('/api/farmers', authenticate, authorizeAdmin, async (req, res) => {
   const farmers = await Farmer.find().select('-password');
   res.json(farmers);
@@ -175,10 +186,11 @@ app.post('/api/approve', authenticate, authorizeAdmin, async (req, res) => {
   }
 });
 
-// 6) USSD callback (sandbox)
+// ── 6) USSD CALLBACK (SANDBOX) ────────────────────────────────────────────────
 app.post('/ussd', async (req, res) => {
   const { sessionId, serviceCode, phoneNumber, text = '' } = req.body;
   let response = '';
+
   if (text === '') {
     response  = 'CON Welcome to Agri Monitor\n';
     response += '1. Soil moisture\n';
@@ -189,7 +201,8 @@ app.post('/ussd', async (req, res) => {
   } else if (text === '2') {
     try {
       const wres = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?q=${OWM_CITY},${OWM_COUNTRY}&units=metric&appid=${OWM_API_KEY}`
+        `https://api.openweathermap.org/data/2.5/weather` +
+        `?q=${OWM_CITY},${OWM_COUNTRY}&units=metric&appid=${OWM_API_KEY}`
       );
       const mw = await wres.json();
       response = `END Current temperature: ${mw.main.temp}°C`;
@@ -199,7 +212,8 @@ app.post('/ussd', async (req, res) => {
   } else if (text === '3') {
     try {
       const wres = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?q=${OWM_CITY},${OWM_COUNTRY}&units=metric&appid=${OWM_API_KEY}`
+        `https://api.openweathermap.org/data/2.5/weather` +
+        `?q=${OWM_CITY},${OWM_COUNTRY}&units=metric&appid=${OWM_API_KEY}`
       );
       const mw = await wres.json();
       response = `END Current humidity: ${mw.main.humidity}%`;
@@ -214,6 +228,6 @@ app.post('/ussd', async (req, res) => {
   res.send(response);
 });
 
-// start server
+// ── START SERVER ───────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
