@@ -38,67 +38,76 @@
     </div>
   </main>
 
+  
   <script>
-    // Functionality is unchanged
-    function showStatus() {
-      document.getElementById('login-section').style.display = 'none';
-      document.getElementById('status-section').style.display = 'block';
-      loadStatus();
-    }
+  function showStatus() {
+    document.getElementById('login-section').style.display  = 'none';
+    document.getElementById('status-section').style.display = 'block';
+    loadStatus();
+  }
 
-    async function loadStatus() {
-      const token = localStorage.getItem('token');
-      const stat = await fetch('/status', {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
-      const data = await stat.json();
-      document.getElementById('status').innerHTML = `
-        <p><strong>Last Moisture:</strong> ${data.lastReading.moisture}%</p>
-        <p><strong>Timestamp:</strong> ${new Date(data.lastReading.timestamp).toLocaleString()}</p>
-        <p><strong>Threshold:</strong> ${data.threshold}%</p>
+  async function loadStatus() {
+    const token = localStorage.getItem('token');
+    // fetch soil status
+    const stat = await fetch('/status', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const data = await stat.json();
+    document.getElementById('status').innerHTML = `
+      <p><strong>Last Moisture:</strong> ${data.lastReading.moisture}%</p>
+      <p><strong>Timestamp:</strong> ${new Date(data.lastReading.timestamp).toLocaleString()}</p>
+      <p><strong>Threshold:</strong> ${data.threshold}%</p>
+    `;
+
+    // fetch weather (client-side)
+    try {
+      const apiKey = '88c379c639be30f429a606356b5ba301';
+      const city   = 'Kaduna';
+      const country= 'Nigeria';
+      const wres   = await fetch(
+        `https://api.openweathermap.org/data/2.5/weather?q=${city},${country}&units=metric&appid=${apiKey}`
+      );
+      const mw = await wres.json();
+      document.getElementById('weather').innerHTML = `
+        <p><i class="fas fa-temperature-high"></i> ${mw.main.temp}°C</p>
+        <p><i class="fas fa-cloud"></i> ${mw.weather[0].description}</p>
+        <p><i class="fas fa-tint"></i> Humidity: ${mw.main.humidity}%</p>
       `;
-
-      try {
-        // SECURITY NOTE: Storing API keys on the client-side is not secure.
-        // This should be moved to a backend service to protect your key.
-        const apiKey = '88c379c639be30f429a606356b5ba301';
-        const city = 'Kaduna';
-        const country = 'Nigeria';
-        const wres = await fetch(
-          `https://api.openweathermap.org/data/2.5/weather?q=${city},${country}&units=metric&appid=${apiKey}`
-        );
-        const mw = await wres.json();
-        document.getElementById('weather').innerHTML = `
-          <p><i class="fas fa-temperature-high"></i> ${mw.main.temp}°C</p>
-          <p><i class="fas fa-cloud"></i> ${mw.weather[0].description}</p>
-          <p><i class="fas fa-tint"></i> Humidity: ${mw.main.humidity}%</p>
-        `;
-      } catch {
-        document.getElementById('weather').innerText = 'Unable to load weather.';
-      }
+    } catch {
+      document.getElementById('weather').innerText = 'Unable to load weather.';
     }
+  }
 
-    document.addEventListener('DOMContentLoaded', () => {
-      if (localStorage.getItem('token')) showStatus();
-    });
-
-    document.getElementById('login-btn').addEventListener('click', async () => {
-      const phone = document.getElementById('login-phone').value;
-      const pw = document.getElementById('login-password').value;
-      const res = await fetch('/login', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ phone, password: pw })
-      });
-      const json = await res.json();
-      if (!res.ok || !json.approved) {
-        document.getElementById('login-msg').innerText =
-          !res.ok ? 'Invalid credentials.' : 'Account pending approval.';
-        return;
-      }
-      localStorage.setItem('token', json.token);
+  // on page load: auto-login & start polling
+  document.addEventListener('DOMContentLoaded', () => {
+    if (localStorage.getItem('token')) {
       showStatus();
+      // poll every 30s
+      setInterval(loadStatus, 30_000);
+    }
+  });
+
+  // manual login
+  document.getElementById('login-btn').addEventListener('click', async () => {
+    const phone = document.getElementById('login-phone').value;
+    const pw    = document.getElementById('login-password').value;
+    const res   = await fetch('/login', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ phone, password: pw })
     });
-  </script>
+    const json = await res.json();
+    if (!res.ok || !json.approved) {
+      document.getElementById('login-msg').innerText =
+        !res.ok ? 'Invalid credentials.' : 'Account pending approval.';
+      return;
+    }
+    localStorage.setItem('token', json.token);
+    showStatus();
+    // kick off polling after a fresh login
+    setInterval(loadStatus, 30_000);
+  });
+</script>
+
 </body>
 </html>
