@@ -12,7 +12,7 @@ const jwt        = require('jsonwebtoken');
 const fetch = (...args) =>
   import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
-// Environment variables
+// load environment variables
 const {
   AT_USERNAME,
   AT_API_KEY,
@@ -20,32 +20,26 @@ const {
   OWM_CITY    = 'Kaduna',
   OWM_COUNTRY = 'NG',
   MOISTURE_THRESH = 40,
-  JWT_SECRET    = 'supersecret_jwt_key',
+  JWT_SECRET = 'supersecret_jwt_key',
   MONGODB_URI
 } = process.env;
-
-// Threshold
 const THRESH = { moisture: Number(MOISTURE_THRESH) };
 
-// Africa's Talking clients
-const SMSClient = require('africastalking')({
-  username: AT_USERNAME,
-  apiKey:   AT_API_KEY,
-  environment: 'production'
-}).SMS;
-
-const USSDClient = require('africastalking')({
+// AfricasTalking USSD (sandbox only)
+const AfricasTalking = require('africastalking')({
   username: 'sandbox',
   apiKey:   AT_API_KEY,
   environment: 'sandbox'
-}).USSD;
+});
+const USSDClient = AfricasTalking.USSD;
 
-// MongoDB setup
+// connect to MongoDB
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 }).catch(err => console.error('MongoDB error:', err));
 
+// Farmer schema & model
 const farmerSchema = new mongoose.Schema({
   name:     { type: String, required: true },
   phone:    { type: String, required: true, unique: true },
@@ -58,29 +52,57 @@ const Farmer = mongoose.model('Farmer', farmerSchema);
 // In-memory state
 let lastReading = { moisture: 0, timestamp: null };
 
-// Express app
+// Express setup
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Auth middleware
+// Auth middlewares
 function authenticate(req, res, next) {
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ')) {
-    return res.status(401).send('Missing token');
-  }
+  const h = req.headers.authorization;
+  if (!h || !h.startsWith('Bearer ')) return res.status(401).send('Missing token');
   try {
-    req.user = jwt.verify(auth.slice(7), JWT_SECRET);
+    req.user = jwt.verify(h.slice(7), JWT_SECRET);
     next();
   } catch {
-    return res.status(401).send('Invalid token');
+    res.status(401).send('Invalid token');
   }
 }
 function authorizeAdmin(req, res, next) {
   if (!req.user.isAdmin) return res.status(403).send('Forbidden');
   next();
+}
+
+// helper: send SMS via production API
+async function sendSMS(numbers, message) {
+  const url = 'https://api.africastalking.com/version1/messaging';
+  const params = new URLSearchParams();
+  params.append('username', AT_USERNAME);
+  params.append('to', numbers.join(','));
+  params.append('message', message);
+  params.append('bulkSMSMode', '1');
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'apikey': AT_API_KEY,
+        'Accept': 'application/json'
+      },
+      body: params
+    });
+    const raw = await resp.text();
+    try {
+      const data = JSON.parse(raw);
+      console.log('SMS response:', data);
+    } catch (parseErr) {
+      console.warn('SMS endpoint returned non-JSON:', raw);
+    }
+  } catch (err) {
+    console.error('SMS send error:', err);
+  }
 }
 
 // 1) Public reading endpoint
@@ -89,12 +111,13 @@ app.post('/reading', (req, res) => {
   console.log(`Received moisture: ${moisture}%`);
   lastReading = { moisture, timestamp: new Date() };
 
-  // respond immediately
+  // immediate response
   res.json({ ok: true, lastReading });
 
-  // if below threshold, send SMS asynchronously
+  // async SMS if below threshold
   if (moisture < THRESH.moisture) {
     (async () => {
+      // fetch weather
       let weatherInfo = '';
       if (OWM_API_KEY) {
         try {
@@ -107,19 +130,18 @@ app.post('/reading', (req, res) => {
           console.error('Weather fetch error:', e);
         }
       }
-
+      // notify farmers
       try {
         const farmers = await Farmer.find({ approved: true });
         const numbers = farmers.map(f => f.phone);
         if (numbers.length) {
           const msg = `⚠️ Low soil moisture alert: ${moisture}%.` + weatherInfo;
-          const atResp = await SMSClient.send({ to: numbers, message: msg });
-          console.log('SMS sent:', JSON.stringify(atResp, null, 2));
+          await sendSMS(numbers, msg);
         } else {
           console.log('No approved farmers to notify.');
         }
-      } catch (smsErr) {
-        console.error('SMS send error:', smsErr);
+      } catch (err) {
+        console.error('SMS notify error:', err);
       }
     })();
   }
@@ -137,14 +159,14 @@ app.post('/login', async (req, res) => {
     const { phone, password } = req.body;
     const user = await Farmer.findOne({ phone });
     if (!user) return res.status(401).send('Invalid credentials');
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(401).send('Invalid credentials');
-
-    const token = jwt.sign(
-      { id: user._id, approved: user.approved, isAdmin: user.isAdmin },
-      JWT_SECRET,
-      { expiresIn: '8h' }
-    );
+    if (!(await bcrypt.compare(password, user.password))) {
+      return res.status(401).send('Invalid credentials');
+    }
+    const token = jwt.sign({
+      id: user._id,
+      approved: user.approved,
+      isAdmin: user.isAdmin
+    }, JWT_SECRET, { expiresIn: '8h' });
     res.json({ token, approved: user.approved, isAdmin: user.isAdmin });
   } catch (e) {
     console.error('Login error:', e);
@@ -181,11 +203,10 @@ app.post('/api/approve', authenticate, authorizeAdmin, async (req, res) => {
   }
 });
 
-// 6) USSD callback (sandbox)
+// 6) USSD callback
 app.post('/ussd', async (req, res) => {
   const { sessionId, serviceCode, phoneNumber, text = '' } = req.body;
   let response = '';
-
   if (text === '') {
     response  = 'CON Welcome to Agri Monitor\n';
     response += '1. Soil moisture\n';
@@ -216,7 +237,6 @@ app.post('/ussd', async (req, res) => {
   } else {
     response = 'END Invalid choice';
   }
-
   res.set('Content-Type', 'text/plain');
   res.send(response);
 });
