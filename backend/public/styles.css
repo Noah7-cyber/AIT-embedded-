@@ -1,75 +1,238 @@
+/* --- Global Styles & Variables --- */
+:root {
+  --primary-color: #2c6b2f; /* Deep Green */
+  --secondary-color: #6a994e; /* Light Green */
+  --accent-color: #a7c957; /* Bright Green */
+  --bg-color: #f2f2f2;
+  --card-bg: #ffffff;
+  --text-color: #333333;
+  --border-color: #ddd;
+  --error-color: #d9534f;
+  --success-color: #5cb85c;
+  --font-family: 'Montserrat', sans-serif;
+}
+
 body {
-  font-family: Arial, sans-serif;
-  margin: 2rem;
-  background: #f9f9f9;
-  color: #333;
+  font-family: var(--font-family);
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  margin: 0;
+  padding: 0;
+  line-height: 1.6;
 }
+
+.container {
+  max-width: 1100px;
+  margin: 2rem auto;
+  padding: 0 2rem;
+}
+
+h1, h2, h3 {
+  color: var(--primary-color);
+  font-weight: 700;
+}
+
 h1 {
-  font-size: 2.5rem;
-  margin-bottom: 1rem;
-  transition: transform 0.5s ease;
+  text-align: center;
+  margin-bottom: 0.5rem;
 }
-h1.animate-text:hover {
-  transform: scale(1.1);
+
+h1 .fas {
+  margin-right: 10px;
 }
-h2 {
-  font-size: 1.8rem;
-  margin-top: 1.5rem;
-}
-nav a {
-  margin-right: 1rem;
-  color: #007bff;
-  text-decoration: none;
+
+p.subtext {
+  text-align: center;
+  color: var(--secondary-color);
   font-size: 1.1rem;
+  height: 2rem; /* Reserve space for typed text */
+  margin-bottom: 2rem;
 }
+
+/* --- Header & Navigation --- */
+header {
+  background: var(--card-bg);
+  padding: 2rem 1rem;
+  border-bottom: 4px solid var(--primary-color);
+  margin-bottom: 2rem;
+}
+
+nav {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1rem;
+  background-color: var(--primary-color);
+}
+
+nav a {
+  color: white;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 5px;
+  transition: background-color 0.3s ease;
+}
+
 nav a:hover {
-  text-decoration: underline;
+  background-color: var(--secondary-color);
 }
-section.hero {
-  background: #eafaf1;
+
+/* --- Forms & Buttons --- */
+form, .login-section {
+  background: var(--card-bg);
   padding: 2rem;
   border-radius: 8px;
-  margin-top: 1rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  max-width: 500px;
+  margin: 2rem auto;
 }
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
 label {
   display: block;
-  margin: 0.5rem 0;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--primary-color);
 }
-input {
-  padding: 0.5rem;
-  margin-left: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-button {
-  padding: 0.6rem 1.2rem;
-  margin-top: 1rem;
-  border: none;
-  background: #28a745;
-  color: white;
-  border-radius: 4px;
-  cursor: pointer;
+
+input[type="text"],
+input[type="tel"],
+input[type="password"] {
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
   font-size: 1rem;
+  box-sizing: border-box;
 }
+
+input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 5px var(--accent-color);
+}
+
+button {
+  display: inline-block;
+  background-color: var(--primary-color);
+  color: white;
+  padding: 0.8rem 1.5rem;
+  border: none;
+  border-radius: 5px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  width: 100%;
+}
+
 button:hover {
-  background: #218838;
+  background-color: var(--secondary-color);
 }
+
+button .fas {
+  margin-right: 8px;
+}
+
+#login-msg, #error, #message {
+  text-align: center;
+  margin-top: 1rem;
+  font-weight: 600;
+}
+#error { color: var(--error-color); }
+#message { color: var(--success-color); }
+
+/* --- Index Page Specifics --- */
+.hero {
+  text-align: center;
+  padding: 3rem 1rem;
+  background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('https://images.pexels.com/photos/265216/pexels-photo-265216.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1') no-repeat center center/cover;
+  color: white;
+  border-radius: 8px;
+}
+
+.hero p {
+  font-size: 1.25rem;
+  line-height: 1.8;
+}
+
+.impact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
+  margin-top: 3rem;
+  text-align: center;
+}
+
+.impact-item {
+  background: var(--card-bg);
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.impact-item:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+.impact-item .fas {
+  font-size: 3rem;
+  color: var(--primary-color);
+  margin-bottom: 1rem;
+}
+
+/* --- Admin & Status Page Specifics --- */
+#admin-section, #status-section {
+  background: var(--card-bg);
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  margin-top: 2rem;
+}
+
+#load-farmers {
+  width: auto;
+  margin-bottom: 1.5rem;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 1rem;
-  background: white;
 }
-th,
-td {
-  border: 1px solid #ccc;
-  padding: 0.5rem;
+
+th, td {
+  padding: 1rem;
   text-align: left;
+  border-bottom: 1px solid var(--border-color);
 }
-th {
-  background: #e9ecef;
+
+thead {
+  background-color: var(--primary-color);
+  color: white;
 }
-#error, #message {
-  color: red;
-  margin-top: 0.5rem;
+
+tbody tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+
+tbody tr:hover {
+  background-color: #e9f5e9;
+}
+
+#status-section p {
+  font-size: 1.1rem;
+}
+
+#status, #weather {
+  border-left: 4px solid var(--accent-color);
+  padding-left: 1rem;
+  margin-bottom: 1.5rem;
 }
